@@ -1,0 +1,229 @@
+# =============================================================================
+# Model Configuration - Industrial Surface Defect Detection Platform
+# =============================================================================
+# Hyperparameters optimized for the NEU Surface Defect Dataset:
+#   - 1,800 grayscale images (200x200 pixels)
+#   - 6 defect classes, 300 images per class
+#   - Small dataset → use pretrained models, strong augmentation, regularization
+# =============================================================================
+
+# =============================================================================
+# Classification Models
+# =============================================================================
+# Transfer learning models fine-tuned for 6-class defect classification.
+# Input images are resized to 224x224 and converted from grayscale to 3-channel.
+
+classification:
+  # --- ResNet50 ---
+  # Deep residual network; strong baseline for image classification.
+  # Larger model benefits from lower learning rate to avoid catastrophic forgetting.
+  resnet50:
+    input_size: 224
+    num_classes: 6
+    pretrained: true
+    freeze_layers: true            # Freeze early layers to preserve learned features
+    unfreeze_epoch: 10             # Unfreeze all layers after this epoch for fine-tuning
+    learning_rate: 0.0001          # Lower LR for large pretrained model
+    batch_size: 16                 # Smaller batch for small dataset, better generalization
+    epochs: 50
+    optimizer: adam                 # Adam works well for transfer learning
+    weight_decay: 0.0001           # L2 regularization to prevent overfitting
+    scheduler: cosine_annealing    # Smooth LR decay over training
+    scheduler_params:
+      T_max: 50                    # Restart period = total epochs
+      eta_min: 0.000001            # Minimum learning rate
+    dropout: 0.5                   # Dropout before final FC layer
+
+  # --- EfficientNet-B0 ---
+  # Compact architecture with excellent accuracy/efficiency tradeoff.
+  # Good choice for deployment on resource-constrained devices.
+  efficientnet_b0:
+    input_size: 224
+    num_classes: 6
+    pretrained: true
+    freeze_layers: true
+    unfreeze_epoch: 8
+    learning_rate: 0.0002
+    batch_size: 16
+    epochs: 50
+    optimizer: adam
+    weight_decay: 0.00005
+    scheduler: step_lr
+    scheduler_params:
+      step_size: 15                # Decay LR every 15 epochs
+      gamma: 0.1                   # Multiply LR by 0.1 at each step
+    dropout: 0.3                   # EfficientNet has built-in dropout; keep additional low
+
+  # --- MobileNetV2 ---
+  # Lightweight model designed for mobile/edge deployment.
+  # Fastest inference but slightly lower accuracy.
+  mobilenet_v2:
+    input_size: 224
+    num_classes: 6
+    pretrained: true
+    freeze_layers: false           # MobileNet is small enough to fine-tune fully
+    unfreeze_epoch: 0
+    learning_rate: 0.0003
+    batch_size: 32                 # Smaller model allows larger batch
+    epochs: 60                     # Train longer since full fine-tuning
+    optimizer: adam
+    weight_decay: 0.0001
+    scheduler: cosine_annealing
+    scheduler_params:
+      T_max: 60
+      eta_min: 0.000001
+    dropout: 0.4
+
+# =============================================================================
+# Detection Models
+# =============================================================================
+# Object detection models for defect localization and classification.
+# Input images are resized to 640x640 for detection.
+
+detection:
+  # --- YOLOv8 ---
+  # Ultralytics YOLOv8 for real-time defect detection.
+  # model_size options: n (nano), s (small), m (medium), l (large), x (extra-large)
+  yolov8:
+    model_size: s                  # Small model balances speed and accuracy for NEU dataset
+    img_size: 640                  # Standard YOLO input resolution
+    num_classes: 6
+    epochs: 100                    # YOLO typically needs more epochs
+    batch_size: 16
+    patience: 20                   # Early stopping patience (epochs without improvement)
+    optimizer: AdamW               # AdamW recommended for YOLOv8
+    learning_rate: 0.01            # YOLOv8 default initial LR
+    weight_decay: 0.0005
+    warmup_epochs: 3               # Linear warmup at start of training
+    warmup_momentum: 0.8
+    momentum: 0.937                # SGD momentum (used if optimizer=SGD)
+    cos_lr: true                   # Use cosine LR scheduler
+    close_mosaic: 10               # Disable mosaic augmentation for last N epochs
+    # YOLOv8 built-in augmentation params
+    augmentation:
+      hsv_h: 0.015                 # HSV-Hue augmentation range
+      hsv_s: 0.7                   # HSV-Saturation augmentation range
+      hsv_v: 0.4                   # HSV-Value augmentation range
+      degrees: 15.0                # Rotation degrees (±)
+      translate: 0.1               # Translation fraction
+      scale: 0.5                   # Scale augmentation
+      fliplr: 0.5                  # Horizontal flip probability
+      flipud: 0.5                  # Vertical flip probability (useful for defects)
+      mosaic: 1.0                  # Mosaic augmentation probability
+      mixup: 0.1                   # Mixup augmentation probability
+
+  # --- Faster R-CNN ---
+  # Two-stage detector with higher accuracy but slower inference.
+  # Better for cases where localization precision is critical.
+  faster_rcnn:
+    backbone: resnet50_fpn         # ResNet50 with Feature Pyramid Network
+    pretrained_backbone: true      # Use ImageNet-pretrained backbone
+    num_classes: 7                 # 6 defect classes + 1 background
+    img_size: 640
+    learning_rate: 0.005
+    batch_size: 4                  # Faster R-CNN is memory-intensive
+    epochs: 50
+    optimizer: sgd
+    momentum: 0.9
+    weight_decay: 0.0005
+    scheduler: step_lr
+    scheduler_params:
+      step_size: 20
+      gamma: 0.1
+    # Region Proposal Network (RPN) settings
+    anchor_sizes:
+      - [16, 32, 64, 128, 256]    # Anchor sizes in pixels
+    aspect_ratios:
+      - [0.5, 1.0, 2.0]           # Width/height ratios for anchors
+    # Detection thresholds during training
+    rpn_nms_threshold: 0.7         # NMS threshold for RPN proposals
+    box_nms_threshold: 0.5         # NMS threshold for final detections
+    rpn_score_threshold: 0.0       # Minimum objectness score for proposals
+    box_score_threshold: 0.05      # Minimum class score during training
+
+# =============================================================================
+# Data Augmentation
+# =============================================================================
+# Augmentation parameters using albumentations library.
+# Aggressive augmentation is critical for the small NEU dataset (only 300 images/class).
+# These are applied during training only; validation/test use resize+normalize.
+
+augmentation:
+  # Geometric transforms
+  rotation_limit: 15               # Random rotation ± degrees
+  flip_horizontal_prob: 0.5        # Horizontal flip probability
+  flip_vertical_prob: 0.5          # Vertical flip (defects have no preferred orientation)
+  shift_limit: 0.1                 # Random shift as fraction of image size
+  scale_limit: 0.1                 # Random zoom in/out range
+
+  # Photometric transforms
+  brightness_limit: 0.2            # Brightness adjustment ± range
+  contrast_limit: 0.2             # Contrast adjustment ± range
+  blur_limit: 3                    # Maximum Gaussian blur kernel size (must be odd)
+  noise_var_limit: 10.0            # Gaussian noise variance limit
+
+  # Advanced augmentation
+  elastic_transform:
+    enabled: true                  # Elastic distortion for defect shape variation
+    alpha: 120                     # Intensity of displacement
+    sigma: 6                       # Smoothness of displacement field
+    probability: 0.3
+
+  coarse_dropout:
+    enabled: true                  # Random erasing / cutout
+    max_holes: 8
+    max_height: 20
+    max_width: 20
+    probability: 0.3
+
+  # Overall augmentation probability (applied per-image)
+  overall_probability: 1.0         # Always apply at least one augmentation in training
+
+# =============================================================================
+# Inference Configuration
+# =============================================================================
+# Parameters for the inference pipeline during prediction.
+
+inference:
+  confidence_threshold: 0.5        # Minimum confidence to accept a prediction
+  iou_threshold: 0.45              # IoU threshold for Non-Maximum Suppression (NMS)
+  max_detections: 100              # Maximum detections per image
+  device: auto                     # Device selection: auto, cpu, or cuda
+  half_precision: false            # FP16 inference (requires CUDA-capable GPU)
+  batch_size: 8                    # Batch size for batch/folder inference
+  classification_mode: single      # single (top-1) or multi (top-k predictions)
+  top_k: 3                         # Number of top predictions to return (if multi mode)
+
+# =============================================================================
+# Training (General)
+# =============================================================================
+# Common training parameters shared across all models.
+
+training:
+  # Early stopping
+  early_stopping_patience: 15      # Stop if no improvement for N epochs
+  early_stopping_min_delta: 0.001  # Minimum change to count as improvement
+
+  # Checkpointing
+  checkpoint_metric: val_f1        # Metric to monitor for best model (val_loss, val_acc, val_f1)
+  checkpoint_mode: max             # max for accuracy/f1, min for loss
+  save_top_k: 3                    # Keep top-K best model checkpoints
+
+  # DataLoader settings
+  num_workers: 4                   # Number of data loading workers
+  pin_memory: true                 # Pin memory for faster GPU transfer
+  persistent_workers: true         # Keep workers alive between epochs
+
+  # Reproducibility
+  seed: 42                         # Random seed for reproducibility
+  deterministic: true              # Use deterministic algorithms (may be slower)
+
+  # Mixed precision training
+  use_amp: true                    # Automatic Mixed Precision (faster training on GPU)
+
+  # Gradient clipping
+  gradient_clip_val: 1.0           # Maximum gradient norm (prevents exploding gradients)
+
+  # Logging
+  log_every_n_steps: 10            # Log metrics every N training steps
+  val_check_interval: 1.0          # Validate every epoch (1.0 = every epoch)

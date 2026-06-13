@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Data (mount as volumes instead)
+data/raw
+data/processed
+data/yolo
+
+# Notebooks
+notebooks
+
+# Tests
+tests
+
+# MLflow local runs
+mlruns
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/*.log
+
+# Docs
+docs
+*.md
+!README.md

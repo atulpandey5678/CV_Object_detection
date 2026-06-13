@@ -1,0 +1,97 @@
+# ==============================================================================
+# Docker Compose - Industrial Surface Defect Detection Platform
+# ==============================================================================
+# Services:
+#   - backend:  FastAPI REST API (port 8000)
+#   - frontend: Streamlit Web App (port 8501)
+#   - db:       PostgreSQL database (port 5432)
+#   - mlflow:   MLflow tracking server (port 5000)
+#
+# Usage:
+#   docker-compose up --build
+#   docker-compose up -d    (detached mode)
+#   docker-compose down     (stop all services)
+# ==============================================================================
+
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: defect_db
+    environment:
+      POSTGRES_DB: defect_detection
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: defect_backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/defect_detection
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      DEVICE: "cpu"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data/uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Streamlit Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: defect_frontend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/defect_detection
+      API_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./models:/app/models
+      - ./data/uploads:/app/data/uploads
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # MLflow Tracking Server
+  mlflow:
+    image: python:3.11-slim
+    container_name: defect_mlflow
+    command: >
+      bash -c "pip install mlflow psycopg2-binary boto3 &&
+               mlflow server --host 0.0.0.0 --port 5000 
+               --backend-store-uri postgresql://postgres:postgres@db:5432/defect_detection
+               --default-artifact-root /mlflow/artifacts"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:

@@ -1,0 +1,71 @@
+# =============================================================================
+# Industrial Surface Defect Detection Platform - Git Ignore
+# =============================================================================
+
+# --- Environment ---
+.env
+.env.local
+.env.production
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# --- Virtual Environment ---
+venv/
+.venv/
+env/
+
+# --- Data (too large for GitHub) ---
+data/raw/
+data/processed/
+data/yolo/images/
+data/yolo/labels/
+data/uploads/
+*.bmp
+*.tif
+*.tiff
+
+# --- Model Weights (too large for GitHub) ---
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.engine
+runs/
+
+# --- Outputs ---
+outputs/*.png
+outputs/*.jpg
+logs/*.log
+mlruns/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Docker ---
+*.log
+
+# --- Database ---
+*.db
+*.sqlite3
+
+# --- Misc ---
+*.bak
+*.tmp
+.kiro/
